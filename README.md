@@ -58,6 +58,9 @@ flowchart TD
 **Potential Biases**
 - Genres are over-prioritzed. it assumes genre is always the dominant signal, which isn't always true. 
 - Energy is the only numerical feature being taken into account, which can rank 2 songs with different tempo and danceability.
+
+**Phase 3 Step 4 CLI Verification** 
+![alt text](image.png)
 ---
 
 ## Getting Started
