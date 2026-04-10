@@ -44,6 +44,20 @@ Replace this paragraph with your own summary of what your version does.
 - Sort all songs by score, highest first
 - Return the top `k` results (default: 5)
 
+**Mermaid.js Flowchart:**
+flowchart TD
+    A([User Preferences\ngenre · mood · energy · acoustic]) --> B[Load songs from CSV]
+    B --> C{More songs\nto score?}
+    C -- Yes --> D[Score next song\ngenre match +2.0\nmood match +1.0\nenergy proximity]
+    D --> E[Append score\nto results list]
+    E --> C
+    C -- No --> F[Sort all songs\nby score descending]
+    F --> G[Slice top K]
+    G --> H([Top K Recommendations])
+
+**Potential Biases**
+- Genres are over-prioritzed. it assumes genre is always the dominant signal, which isn't always true. 
+- Energy is the only numerical feature being taken into account, which can rank 2 songs with different tempo and danceability.
 ---
 
 ## Getting Started
