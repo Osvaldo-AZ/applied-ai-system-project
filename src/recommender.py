@@ -1,6 +1,6 @@
 import csv
 from typing import List, Dict, Tuple, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 
 @dataclass
 class Song:
@@ -29,6 +29,7 @@ class UserProfile:
     favorite_mood: str
     target_energy: float
     likes_acoustic: bool
+    target_valence: float = 0.5
 
 class Recommender:
     """
@@ -40,13 +41,17 @@ class Recommender:
 
     def recommend(self, user: UserProfile, k: int = 5) -> List[Song]:
         """Return the top-k songs ranked by compatibility with the given user profile."""
-        # TODO: Implement recommendation logic
-        return self.songs[:k]
+        user_dict = asdict(user)
+        return sorted(
+            self.songs,
+            key=lambda song: score_song(user_dict, asdict(song))[0],
+            reverse=True,
+        )[:k]
 
     def explain_recommendation(self, user: UserProfile, song: Song) -> str:
         """Return a human-readable string explaining why a song was recommended to the user."""
-        # TODO: Implement explanation logic
-        return "Explanation placeholder"
+        _, reasons = score_song(asdict(user), asdict(song))
+        return "; ".join(reasons) if reasons else "no strong matches found"
 
 def load_songs(csv_path: str) -> List[Dict]:
     """
@@ -82,10 +87,11 @@ def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
         score += 0.30
         reasons.append(f"matches your favorite genre ({song['genre']})")
 
-    # mood: 0.25 weight
-    if song["mood"] == user_prefs["favorite_mood"]:
-        score += 0.25
-        reasons.append(f"matches your preferred mood ({song['mood']})")
+    # mood: 0.25 weight — temporarily disabled to test ranking sensitivity
+    # Max achievable score is now 0.75 (0.30 + 0.20 + 0.15 + 0.10); math stays valid.
+    # if song["mood"] == user_prefs["favorite_mood"]:
+    #     score += 0.25
+    #     reasons.append(f"matches your preferred mood ({song['mood']})")
 
     # --- Numerical features (squared penalty proximity) ---
     # score = 1 - (song_value - user_target)^2
