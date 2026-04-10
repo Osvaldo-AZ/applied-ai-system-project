@@ -17,17 +17,32 @@ Replace this paragraph with your own summary of what your version does.
 
 ## How The System Works
 
-Explain your design in plain language.
+**Approach:** Content-based filtering — each song is scored against the user's taste profile and ranked by total score.
 
-Some prompts to answer:
+**Song Features Used:**
+- `genre` and `mood` — categorical labels; strongest taste filters in the dataset
+- `energy` — how intense or active the track feels (0.0–1.0); highest numeric weight
+- `acousticness` — how organic vs. electronic the track sounds (0.0–1.0)
+- `valence` — emotional positivity, dark to bright (0.0–1.0)
+- `danceability` — rhythmic suitability; used as a supporting tiebreaker
 
-- What features does each `Song` use in your system
-  - For example: genre, mood, energy, tempo
-- What information does your `UserProfile` store
-- How does your `Recommender` compute a score for each song
-- How do you choose which songs to recommend
+**UserProfile Stores:**
+- `favorite_genre` — preferred musical style
+- `favorite_mood` — preferred emotional character
+- `target_energy` — desired intensity level (0.0–1.0)
+- `likes_acoustic` — preference for organic vs. electronic sound (True/False)
 
-You can include a simple diagram or bullet list if helpful.
+**Scoring Rule (one song at a time):**
+- Categorical match: `genre` match → +0.30, `mood` match → +0.25
+- Numerical proximity: `score = 1 - (song_value - user_target)²`
+  - Squaring the difference lightly penalizes small gaps, heavily penalizes large ones
+  - `energy` weighted 0.20, `acousticness` 0.15, `valence` 0.10
+- All weighted components sum to a final score between 0.0 and 1.0
+
+**Ranking Rule (choosing what to recommend):**
+- Score every song in the catalog using the scoring rule above
+- Sort all songs by score, highest first
+- Return the top `k` results (default: 5)
 
 ---
 
