@@ -89,9 +89,9 @@ def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
 
     # mood: 0.25 weight — temporarily disabled to test ranking sensitivity
     # Max achievable score is now 0.75 (0.30 + 0.20 + 0.15 + 0.10); math stays valid.
-    # if song["mood"] == user_prefs["favorite_mood"]:
-    #     score += 0.25
-    #     reasons.append(f"matches your preferred mood ({song['mood']})")
+    if song["mood"] == user_prefs["favorite_mood"]:
+        score += 0.25
+        reasons.append(f"matches your preferred mood ({song['mood']})")
 
     # --- Numerical features (squared penalty proximity) ---
     # score = 1 - (song_value - user_target)^2
