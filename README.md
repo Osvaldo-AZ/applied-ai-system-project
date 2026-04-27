@@ -238,21 +238,58 @@ Gemini's free tier supports structured JSON output via `response_schema`, which 
 
 ---
 
-## Testing Summary
+## Reliability & Testing
 
-**What worked:**
-- The two `pytest` tests (`test_recommend_returns_songs_sorted_by_score`, `test_explain_recommendation_returns_non_empty_string`) confirmed that the core scoring math and explanation logic are correct and stayed stable through all changes.
-- The fallback guardrails worked correctly during development — when Gemini returned quota errors, the system fell back to the default profile and still returned results, making failures visible without crashing.
-- The low-score warning correctly fired for niche queries like "baroque harpsichord music," giving users honest feedback.
+### Automated Tests — 10 / 10 passing
 
-**What didn't work / required fixes:**
-- `from google import genai` caused an `ImportError` due to a Python namespace package conflict with other `google.*` packages installed in the environment. Fixed by changing the import to `import google.genai as genai`.
-- `gemini-2.0-flash` returned a 429 quota error (free tier limit 0). Switched to `gemini-2.5-flash`, which is available under the free tier.
-- The `.env` file initially was not in `.gitignore`, risking accidental API key exposure. Added before any commit.
+```
+pytest tests/ -v
+```
 
-**What I learned:**
-- Guardrails are not optional — every external API call needs a fallback. During testing, the fallback path activated several times due to quota limits, and having it meant the system kept working.
-- Logging every run to `runs.jsonl` made it easy to review exactly what the model parsed from a query and spot cases where the profile was wrong.
+| Test | What it proves |
+|---|---|
+| `test_recommend_returns_songs_sorted_by_score` | Ranking order is always highest-score first |
+| `test_explain_recommendation_returns_non_empty_string` | Explanations are always generated, never empty |
+| `test_genre_match_adds_0_30` | Genre weight is exactly 0.30 — math is correct |
+| `test_perfect_match_scores_above_0_90` | A song matching all targets scores > 0.90 |
+| `test_zero_score_impossible_with_defaults` | Numerical proximity never returns a zero score |
+| `test_build_catalog_context_genres` | Retriever extracts all unique genres from the CSV |
+| `test_build_catalog_context_energy_range` | Retriever min/max energy values are accurate |
+| `test_validate_profile_accepts_valid_dict` | Guardrail correctly passes a well-formed profile |
+| `test_validate_profile_rejects_missing_key` | Guardrail blocks profiles with missing fields |
+| `test_validate_profile_rejects_wrong_type` | Guardrail blocks profiles with wrong field types |
+
+### Confidence Scores from Live Runs
+
+From `logs/runs.jsonl` — 10 real queries logged across development and testing:
+
+| Query | Profile Source | Top Score |
+|---|---|---|
+| "something to chill to" | gemini | 0.97 |
+| "calm music to study" | gemini | 0.96 |
+| "angry classical" | gemini | 0.67 |
+| "some music to pump me up for my workout" | gemini | 0.75 |
+| "baroque harpsichord music for reading" | gemini | 0.72 |
+| 5 early runs (API errors during setup) | fallback | 0.96 |
+
+**Gemini-powered runs averaged a top score of 0.81.** The lowest (0.67, "angry classical") reflects a real catalog gap — no angry classical song exists, so the system returned the closest match (melancholic classical) and could have triggered the low-score warning if the score had dropped below 0.5.
+
+### Error Handling Evidence
+
+The logs show the guardrail system working under real failure conditions:
+
+- **5 out of 10 early runs** hit API errors (wrong model name, quota limits) — the fallback profile activated automatically in all 5 cases. Zero crashes, results always returned.
+- **0 out of 10 runs** produced an empty output or unhandled exception.
+- The fallback explanation (rule-based) was used during those early runs; once Gemini stabilized, AI-generated explanations appeared in every subsequent run.
+
+### What Didn't Work and How It Was Fixed
+
+| Issue | Fix |
+|---|---|
+| `ImportError: cannot import name 'genai' from 'google'` | Changed to `import google.genai as genai` to resolve namespace conflict |
+| `429 RESOURCE_EXHAUSTED` on `gemini-2.0-flash` | Switched to `gemini-2.5-flash` (available on free tier) |
+| `404 NOT_FOUND` on `gemini-1.5-flash` | Listed available models via API, selected confirmed working model |
+| `.env` missing from `.gitignore` | Added before first commit to prevent key exposure |
 
 ---
 
@@ -261,3 +298,37 @@ Gemini's free tier supports structured JSON output via `response_schema`, which 
 Building this project changed how I think about AI recommendations from a black box into something I could see layer by layer. The scoring engine made it obvious that "recommendation" is really a series of explicit trade-offs: how much does genre matter vs. energy? Why is mood worth 0.25 and acousticness only 0.10? Those numbers feel natural until you realize someone had to pick them, and different choices would produce completely different rankings for the same user.
 
 The RAG layer added the most value where the original system was weakest — natural language input — without touching the part that was already working well. That felt like the right kind of AI use: applying a language model to the human-language problem, and keeping deterministic code for the math. The hardest part was not the code; it was understanding why Gemini needed catalog context in the prompt at all. Without it, the model would map "chill vibes" to genres like "indie" or "alternative" that don't exist in the catalog, and the scoring engine would silently return poor results with no warning. Grounding the model in real data is what makes retrieval-augmented generation actually useful. I also learned that using a companies own AI Agent helped greatly. For instance, I originally used Claude Code to help setup the Gemini API, but consistently kept getting errors. Once I switched to Gemini Agent, it was able to resolve the problem right away, as well as made the implementation more token-efficient. 
+
+---
+
+### Limitations and Biases
+
+The catalog has only 18 songs, which is the most significant limitation — any query for a niche style will get a low-relevance result regardless of how well the AI parses the request. Beyond size, the catalog itself is skewed: it has four lofi tracks but only one country, one blues, and one jazz song. This means users who prefer those genres will consistently get poor recommendations, not because the algorithm is broken but because the data underrepresents them.
+
+The scoring weights also embed a bias. Genre is worth 0.30 — the single largest weight — which means a genre match always outweighs any combination of numeric features. A song in the right genre but completely wrong energy and mood will outscore a song in the wrong genre that matches everything else. That assumption may hold for some listeners but certainly not all.
+
+Finally, the system treats every user as if they have the same preference shape. There is no learning over sessions, no way to say "I liked that one, not that one," and no diversity — the top-5 results often cluster around the same genre rather than surfacing variety.
+
+---
+
+### Potential Misuse and Prevention
+
+Music Muse is low-risk as a standalone tool. In this system specifically, the risks are narrower: the Gemini prompt could be manipulated with adversarial input to return a nonsense profile, and the API key in `.env` could be exposed if a developer accidentally commits it. The catalog context constraint in the system prompt (forcing Gemini to pick only from known genres and moods) already limits prompt injection. Keeping `.env` in `.gitignore`, logging all runs for review, and capping the profile to five typed fields are the main safeguards in place.
+
+---
+
+### What Surprised Me During Reliability Testing
+
+The most surprising finding from the logs was how bad the fallback profile made the system look without it being obvious. During early testing, when Gemini was failing due to model quota errors, the fallback profile (`pop / happy / energy 0.5`) silently activated — and the query `"sad boy"` returned "Sunrise City" (a bright, happy pop song) as its top pick with a score of 0.96. The score looked confident. Without the `profile_source: "fallback"` field in the log, there would have been no way to know the AI had never actually processed the query. That taught me that high confidence scores are not the same as correct results.
+
+The second surprise was the `"angry classical"` query. Gemini correctly parsed the intent — it returned `classical / angry / energy 0.85 / acoustic: yes` — but the catalog has no angry classical song, only a melancholic one (Sonata in Blue). The system returned it with a score of 0.67, which was above the 0.5 warning threshold, so no warning fired. The result was technically "the best available match" but was clearly wrong to a listener. This showed that the low-score threshold of 0.5 is too low — a mood mismatch can still produce a middling score because the other features partially compensate.
+
+---
+
+### Collaboration with AI
+
+AI assistance (Claude Code) was central to building this project, and the experience was genuinely mixed.
+
+**Helpful instance:** When setting up the Gemini API call for profile parsing, Claude Code suggested using `response_schema` with `response_mime_type: "application/json"` in the `GenerateContentConfig`. This was non-obvious — the standard prompt-engineering approach would have been to ask Gemini to "return only JSON" in the system prompt and then parse whatever it returned, which is fragile. The schema approach enforced the exact five-field structure at the API level, so the profile validator rarely had anything to reject. That suggestion meaningfully improved the reliability of the parsing step.
+
+**Flawed instance:** Claude Code initially suggested `from google import genai` as the import for the Gemini SDK, and later recommended `gemini-1.5-flash` as a fallback model when the original model hit quota limits. Both were wrong — the first caused an `ImportError` due to a Python namespace conflict with other `google.*` packages, and the second returned a `404 NOT_FOUND` because that model wasn't available on the API version the SDK uses. Neither failure was caught before being pushed into the code. The fixes required reading the actual error messages and running `client.models.list()` to find a model that actually existed. The lesson was that AI suggestions about specific API details and package imports need to be verified against the actual documentation, not taken at face value.
