@@ -189,7 +189,7 @@ def main() -> None:
     parser.add_argument(
         "--interactive",
         action="store_true",
-        help="Describe your taste in plain English (requires ANTHROPIC_API_KEY in .env)",
+        help="Describe your taste in plain English (requires GEMINI_API_KEY in .env)",
     )
     args = parser.parse_args()
 

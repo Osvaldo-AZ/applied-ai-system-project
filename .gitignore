@@ -16,3 +16,6 @@ venv/
 
 # Environment variables (never commit secrets)
 .env
+
+# Run logs (may contain personal queries)
+logs/runs.jsonl

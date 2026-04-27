@@ -88,18 +88,58 @@ flowchart TD
    python -m venv .venv
    source .venv/bin/activate      # Mac or Linux
    .venv\Scripts\activate         # Windows
+   ```
 
-2. Install dependencies
+2. Install dependencies:
 
-```bash
-pip install -r requirements.txt
-```
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-3. Run the app:
+3. Run the demo mode (no API key required):
 
-```bash
-python -m src.main
-```
+   ```bash
+   python -m src.main
+   ```
+
+   This runs 8 hardcoded user profiles and prints their top 5 recommendations.
+
+### Interactive RAG Mode (AI-Powered)
+
+Interactive mode lets you describe what you want in plain English. It requires a free Google Gemini API key.
+
+1. Get a free API key from [Google AI Studio](https://aistudio.google.com/app/apikey).
+
+2. Copy `.env.example` to `.env` and add your key:
+
+   ```bash
+   cp .env.example .env        # Mac/Linux
+   copy .env.example .env      # Windows
+   ```
+
+   Then edit `.env`:
+
+   ```
+   GEMINI_API_KEY=your-actual-key-here
+   ```
+
+3. Run in interactive mode:
+
+   ```bash
+   python -m src.main --interactive
+   ```
+
+   Example session:
+
+   ```
+   Describe the music you want: something chill for studying late at night
+   Analyzing your preferences...
+   Generating explanation...
+   #1  Lo-Fi Dreams by ChillBeats   Genre: lofi  |  Mood: chill  |  Score: 0.87
+   ...
+   ```
+
+   Type `quit` to exit. Each run is logged to `logs/runs.jsonl`.
 
 ### Running Tests
 
