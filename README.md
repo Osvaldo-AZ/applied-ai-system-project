@@ -1,5 +1,8 @@
 # Music Muse — AI-Powered Music Recommender
 
+## Demo Walkthrough
+https://www.loom.com/share/5f876c12d41947a78fdaa44e7cee441f
+
 ## Project Summary
 
 **Original project (Modules 1–3):** Music Recommender Simulation — a command-line system that scores songs from an 18-song CSV catalog against hardcoded user profiles using weighted content-based filtering. It matched each song's genre, mood, energy, valence, and acousticness against a manually defined preference dict and ranked results by total score, with no natural-language input and no external APIs.
