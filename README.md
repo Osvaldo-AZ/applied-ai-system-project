@@ -12,26 +12,21 @@
 
 ```mermaid
 flowchart TD
-    %% Human Input
-    User([User Input]) -- "Natural-language query" --> Parser
-    
-    %% Core System Components
-    subgraph System["Music Muse System"]
-        Retriever[Retriever] -- "Reads songs.csv\n(Context)" --> Parser["Profile Parser (Gemini)"]
-        Parser -- "Extracts JSON Profile\n(genre, mood, etc.)" --> Scorer[Scoring Engine]
-        Scorer -- "Ranks Songs + Match Reasons" --> Generator["Explanation Generator (Gemini)"]
-        User -- "Original Query" --> Generator
-    end
-    
-    %% Output Flow
-    Generator -- "Natural-language Output" --> Output(["Ranked Songs & Explanation"])
-    
-    %% Testing and Human Evaluation
-    Tester["Automated Tests\n(pytest)"] -. "Validates math" .-> Scorer
-    Logger[("System Logs\nruns.jsonl")] -. "Records edge cases" .- System
-    HumanEval([Human Evaluator]) -. "Reviews outputs & bias" .-> Logger
-```
+    User([User Input]) -- "Natural-language query" --> Retriever
 
+    subgraph System["Music Muse System"]
+        Retriever[Retriever] -- "Catalog context" --> Parser["Profile Parser (Gemini)"]
+        Parser -- "Structured profile" --> Scorer[Scoring Engine]
+        Scorer -- "Ranked songs + reasons" --> Generator["Explanation Generator (Gemini)"]
+    end
+
+    Generator -- "Songs & explanation" --> Output([Output])
+
+    Tester["pytest"] -. "Validates scoring math" .-> Scorer
+    Logger[("logs/runs.jsonl")] -. "Logs every run" .-> System
+    HumanEval([Human Evaluator]) -. "Reviews bias & edge cases" .-> Logger
+```
+![System Diagram](assets\SystemDiagram.png)
 ---
 
 ## Architecture Overview
