@@ -1,80 +1,48 @@
-# 🎵 Music Recommender Simulation
+# Music Muse — AI-Powered Music Recommender
 
 ## Project Summary
 
-In this project you will build and explain a small music recommender system.
+**Original project (Modules 1–3):** Music Recommender Simulation — a command-line system that scores songs from an 18-song CSV catalog against hardcoded user profiles using weighted content-based filtering. It matched each song's genre, mood, energy, valence, and acousticness against a manually defined preference dict and ranked results by total score, with no natural-language input and no external APIs.
 
-Your goal is to:
-
-- Represent songs and a user "taste profile" as data
-- Design a scoring rule that turns that data into recommendations
-- Evaluate what your system gets right and wrong
-- Reflect on how this mirrors real world AI recommenders
-
-Replace this paragraph with your own summary of what your version does.
+**Final project (Module 4 addition):** Music Muse extends the original with a RAG (Retrieval-Augmented Generation) pipeline powered by Google Gemini. Users can now describe what they want in plain English — the system retrieves catalog context, uses Gemini to parse the request into a structured profile, runs the existing scoring engine, and generates a personalized explanation of why each song was recommended.
 
 ---
 
-## How The System Works
+## System Diagram
 
-**Approach:** Content-based filtering — each song is scored against the user's taste profile and ranked by total score.
-
-**Song Features Used:**
-- `genre` and `mood` — categorical labels; strongest taste filters in the dataset
-- `energy` — how intense or active the track feels (0.0–1.0); highest numeric weight
-- `acousticness` — how organic vs. electronic the track sounds (0.0–1.0)
-- `valence` — emotional positivity, dark to bright (0.0–1.0)
-- `danceability` — rhythmic suitability; used as a supporting tiebreaker
-
-**UserProfile Stores:**
-- `favorite_genre` — preferred musical style
-- `favorite_mood` — preferred emotional character
-- `target_energy` — desired intensity level (0.0–1.0)
-- `likes_acoustic` — preference for organic vs. electronic sound (True/False)
-
-**Scoring Rule (one song at a time):**
-- Categorical match: `genre` match → +0.30, `mood` match → +0.25
-- Numerical proximity: `score = 1 - (song_value - user_target)²`
-  - Squaring the difference lightly penalizes small gaps, heavily penalizes large ones
-  - `energy` weighted 0.20, `acousticness` 0.15, `valence` 0.10
-- All weighted components sum to a final score between 0.0 and 1.0
-
-**Ranking Rule (choosing what to recommend):**
-- Score every song in the catalog using the scoring rule above
-- Sort all songs by score, highest first
-- Return the top `k` results (default: 5)
-
-**Mermaid.js Flowchart:**
+```mermaid
 flowchart TD
-    A([User Preferences\ngenre · mood · energy · acoustic]) --> B[Load songs from CSV]
-    B --> C{More songs\nto score?}
-    C -- Yes --> D[Score next song\ngenre match +2.0\nmood match +1.0\nenergy proximity]
-    D --> E[Append score\nto results list]
-    E --> C
-    C -- No --> F[Sort all songs\nby score descending]
-    F --> G[Slice top K]
-    G --> H([Top K Recommendations])
+    %% Human Input
+    User([User Input]) -- "Natural-language query" --> Parser
+    
+    %% Core System Components
+    subgraph System["Music Muse System"]
+        Retriever[Retriever] -- "Reads songs.csv\n(Context)" --> Parser["Profile Parser (Gemini)"]
+        Parser -- "Extracts JSON Profile\n(genre, mood, etc.)" --> Scorer[Scoring Engine]
+        Scorer -- "Ranks Songs + Match Reasons" --> Generator["Explanation Generator (Gemini)"]
+        User -- "Original Query" --> Generator
+    end
+    
+    %% Output Flow
+    Generator -- "Natural-language Output" --> Output(["Ranked Songs & Explanation"])
+    
+    %% Testing and Human Evaluation
+    Tester["Automated Tests\n(pytest)"] -. "Validates math" .-> Scorer
+    Logger[("System Logs\nruns.jsonl")] -. "Records edge cases" .- System
+    HumanEval([Human Evaluator]) -. "Reviews outputs & bias" .-> Logger
+```
 
-**Potential Biases**
-- Genres are over-prioritzed. it assumes genre is always the dominant signal, which isn't always true. 
-- Energy is the only numerical feature being taken into account, which can rank 2 songs with different tempo and danceability.
+---
 
-**Phase 3 Step 4 CLI Verification** 
-![alt text](image.png)
+## Architecture Overview
 
+The system has three stages that map directly to RAG:
 
-**Three distinct user dictionaries**
-![alt text](image-1.png)
-![alt text](image-2.png)
-![alt text](image-3.png)
+**Retrieve** — `build_catalog_context()` reads `songs.csv` and extracts the available genres, moods, and numeric feature ranges (energy, valence, acousticness, tempo). This catalog snapshot is injected into every Gemini prompt so the model only picks values that actually exist in the data.
 
-**Edge-Cases**
-![alt text](image-4.png)
-![alt text](image-5.png)
-![alt text](image-6.png)
-![alt text](image-7.png)
-![alt text](image-8.png)
+**Augment** — `parse_user_profile()` sends the user's query plus the catalog context to Gemini (call #1). Gemini returns a structured JSON profile with five fields: `favorite_genre`, `favorite_mood`, `target_energy`, `target_valence`, and `likes_acoustic`. If parsing fails, the system falls back to a default profile rather than crashing.
 
+**Generate** — `recommend_songs()` scores all 18 songs against the parsed profile using weighted feature matching (genre +0.30, mood +0.25, energy 0.20, valence 0.15, acousticness 0.10). The top-5 results and match reasons are passed to Gemini (call #2), which writes a 2–4 sentence natural-language explanation. If the API fails at any point, a rule-based fallback explanation is used instead. Every run is logged to `logs/runs.jsonl` for review.
 
 ---
 
@@ -129,170 +97,167 @@ Interactive mode lets you describe what you want in plain English. It requires a
    python -m src.main --interactive
    ```
 
-   Example session:
-
-   ```
-   Describe the music you want: something chill for studying late at night
-   Analyzing your preferences...
-   Generating explanation...
-   #1  Lo-Fi Dreams by ChillBeats   Genre: lofi  |  Mood: chill  |  Score: 0.87
-   ...
-   ```
-
    Type `quit` to exit. Each run is logged to `logs/runs.jsonl`.
 
 ### Running Tests
-
-Run the starter tests with:
 
 ```bash
 pytest
 ```
 
-You can add more tests in `tests/test_recommender.py`.
+---
+
+## Sample Interactions
+
+### 1 — Chill study session
+
+**Input:**
+```
+Describe the music you want: calm music to study 
+```
+
+**Output:**
+```
+==================================================
+  Query: "calm music to study"
+  Parsed profile: lofi | focused | energy 0.35 | valence 0.55 | acoustic=no
+==================================================
+
+#1  Focus Flow by LoRoom
+    Genre: lofi  |  Mood: focused  |  Score: 0.96
+
+#2  Midnight Coding by LoRoom
+    Genre: lofi  |  Mood: chill  |  Score: 0.72
+
+#3  Library Rain by Paper Lanterns
+    Genre: lofi  |  Mood: chill  |  Score: 0.70
+
+#4  Still Waters by Sable June
+    Genre: r&b  |  Mood: romantic  |  Score: 0.43
+
+#5  Night Drive Loop by Neon Echo
+    Genre: synthwave  |  Mood: moody  |  Score: 0.42
+
+--------------------------------------------------
+Why these songs:
+
+We think you'll love these recommendations for your study session! "Focus Flow" by LoRoom is a fantastic match, hitting your preferred lofi genre, desired focused mood, and very close energy and positivity targets. You'll also find "Midnight Coding" by LoRoom and "Library Rain" by Paper Lanterns ideal, as they both align with your favorite lofi genre and have energy levels very close to your target, with "Library Rain" even perfectly matching your desired energy. These tracks should provide the calm, focused atmosphere you need.
+```
 
 ---
 
-## Experiments You Tried
+### 2 — High-energy workout
 
-Use this section to document the experiments you ran. For example:
+**Input:**
+```
+Describe the music you want: some music to pump me up for my workout
+```
 
-- What happened when you changed the weight on genre from 2.0 to 0.5
-- What happened when you added tempo or valence to the score
-- How did your system behave for different types of users
+**Output:**
+```
+==================================================
+  Query: "some music to pump me up for my workout"
+  Parsed profile: pop | energetic | energy 0.90 | valence 0.80 | acoustic=no
+==================================================
+
+#1  Gym Hero by Max Pulse
+    Genre: pop  |  Mood: intense  |  Score: 0.75
+
+#2  Sunrise City by Neon Echo
+    Genre: pop  |  Mood: happy  |  Score: 0.75
+
+#3  Midnight Crown by Verse & Cipher
+    Genre: hip-hop  |  Mood: energetic  |  Score: 0.70
+
+#4  Neon Cascade by Pulse Grid
+    Genre: electronic  |  Mood: uplifting  |  Score: 0.45
+
+#5  Rooftop Lights by Indigo Parade
+    Genre: indie pop  |  Mood: happy  |  Score: 0.44
+
+--------------------------------------------------
+Why these songs:
+
+You'll find these tracks are a great fit to pump you up for your workout! "Gym Hero" by Max Pulse and "Sunrise City" by Neon Echo both match your favorite pop genre, with high energy levels (0.93 and 0.82 respectively) and positive valences close to your target, perfect for an energetic mood. Additionally, "Midnight Crown" by Verse & Cipher was chosen for its energetic mood and strong energy level of 0.85, ensuring a powerful boost to your session. These selections are all tuned to get your energy and mood soaring!
+```
 
 ---
 
-## Limitations and Risks
+### 3 — Edge case: low-catalog match
 
-Summarize some limitations of your recommender.
+**Input:**
+```
+Describe the music you want: baroque harpsichord music for reading
+```
 
-Examples:
+**Output:**
+```
+[Warning] No songs scored above 0.5 — results may not closely match your taste.
+The catalog may not have a great fit.
 
-- It only works on a tiny catalog
-- It does not understand lyrics or language
-- It might over favor one genre or mood
+==================================================
+  Query: "baroque harpsichord music for reading"
+  Parsed profile: classical | focused | energy 0.45 | valence 0.68 | acoustic=yes
+==================================================
 
-You will go deeper on this in your model card.
+#1  Sonata in Blue by Clara Voss
+    Genre: classical  |  Mood: melancholic  |  Score: 0.72
+
+#2  Focus Flow by LoRoom
+    Genre: lofi  |  Mood: focused  |  Score: 0.70
+
+#3  Coffee Shop Stories by Slow Stereo
+    Genre: jazz  |  Mood: relaxed  |  Score: 0.45
+
+#4  Midnight Coding by LoRoom
+    Genre: lofi  |  Mood: chill  |  Score: 0.45
+
+#5  Library Rain by Paper Lanterns
+    Genre: lofi  |  Mood: chill  |  Score: 0.45
+```
+
+We've found some excellent tracks to accompany your reading! "Sonata in Blue" by Clara Voss is a perfect match for your preferred classical genre and acoustic sound. For that focused mood you're looking for, "Focus Flow" by LoRoom hits the mark, aligning with your preferred mood, target energy, and acoustic sound. Other songs like "Coffee Shop Stories" by Slow Stereo and "Library Rain" by Paper Lanterns also closely match your desired energy levels, positivity, and acoustic preference.
+
+---
+
+## Design Decisions
+
+**Why RAG instead of another approach?**
+The original system could only accept structured Python dicts as input, which meant users had to know the exact field names and valid values. RAG solved the most real friction point: the gap between how people actually think about music ("something to wind down after a stressful day") and the structured data a scoring engine needs. The retrieval step grounds the LLM in the actual catalog so it cannot hallucinate genres or moods that don't exist.
+
+**Why keep the rule-based scoring engine?**
+The scoring engine is deterministic, testable, and explainable — it produces exact reasons like "matches your favorite genre (lofi)" rather than opaque model outputs. Using Gemini only for the language-in and language-out layers preserves that transparency at the core ranking step.
+
+**Why Google Gemini instead of another LLM?**
+Gemini's free tier supports structured JSON output via `response_schema`, which made it straightforward to enforce the exact five-field profile format without prompt engineering tricks. The `google-genai` SDK also supports constrained generation natively.
+
+**Trade-offs made:**
+- The catalog is only 18 songs, so even perfect profile parsing will produce low scores for niche requests — the system warns the user rather than hiding it.
+- Gemini calls add latency (~1–2 seconds per query). For a classroom demo this is acceptable; a production system would cache common profiles.
+- Both Gemini calls have fallback paths, so the system never crashes — but fallback profile results are generic.
+
+---
+
+## Testing Summary
+
+**What worked:**
+- The two `pytest` tests (`test_recommend_returns_songs_sorted_by_score`, `test_explain_recommendation_returns_non_empty_string`) confirmed that the core scoring math and explanation logic are correct and stayed stable through all changes.
+- The fallback guardrails worked correctly during development — when Gemini returned quota errors, the system fell back to the default profile and still returned results, making failures visible without crashing.
+- The low-score warning correctly fired for niche queries like "baroque harpsichord music," giving users honest feedback.
+
+**What didn't work / required fixes:**
+- `from google import genai` caused an `ImportError` due to a Python namespace package conflict with other `google.*` packages installed in the environment. Fixed by changing the import to `import google.genai as genai`.
+- `gemini-2.0-flash` returned a 429 quota error (free tier limit 0). Switched to `gemini-2.5-flash`, which is available under the free tier.
+- The `.env` file initially was not in `.gitignore`, risking accidental API key exposure. Added before any commit.
+
+**What I learned:**
+- Guardrails are not optional — every external API call needs a fallback. During testing, the fallback path activated several times due to quota limits, and having it meant the system kept working.
+- Logging every run to `runs.jsonl` made it easy to review exactly what the model parsed from a query and spot cases where the profile was wrong.
 
 ---
 
 ## Reflection
 
-Read and complete `model_card.md`:
+Building this project changed how I think about AI recommendations from a black box into something I could see layer by layer. The scoring engine made it obvious that "recommendation" is really a series of explicit trade-offs: how much does genre matter vs. energy? Why is mood worth 0.25 and acousticness only 0.10? Those numbers feel natural until you realize someone had to pick them, and different choices would produce completely different rankings for the same user.
 
-[**Model Card**](model_card.md)
-
-Write 1 to 2 paragraphs here about what you learned:
-
-- about how recommenders turn data into predictions
-- about where bias or unfairness could show up in systems like this
-
-
----
-
-## 7. `model_card_template.md`
-
-Combines reflection and model card framing from the Module 3 guidance. :contentReference[oaicite:2]{index=2}  
-
-```markdown
-# 🎧 Model Card - Music Recommender Simulation
-
-## 1. Model Name
-
-Give your recommender a name, for example:
-
-> VibeFinder 1.0
-
----
-
-## 2. Intended Use
-
-- What is this system trying to do
-- Who is it for
-
-Example:
-
-> This model suggests 3 to 5 songs from a small catalog based on a user's preferred genre, mood, and energy level. It is for classroom exploration only, not for real users.
-
----
-
-## 3. How It Works (Short Explanation)
-
-Describe your scoring logic in plain language.
-
-- What features of each song does it consider
-- What information about the user does it use
-- How does it turn those into a number
-
-Try to avoid code in this section, treat it like an explanation to a non programmer.
-
----
-
-## 4. Data
-
-Describe your dataset.
-
-- How many songs are in `data/songs.csv`
-- Did you add or remove any songs
-- What kinds of genres or moods are represented
-- Whose taste does this data mostly reflect
-
----
-
-## 5. Strengths
-
-Where does your recommender work well
-
-You can think about:
-- Situations where the top results "felt right"
-- Particular user profiles it served well
-- Simplicity or transparency benefits
-
----
-
-## 6. Limitations and Bias
-
-Where does your recommender struggle
-
-Some prompts:
-- Does it ignore some genres or moods
-- Does it treat all users as if they have the same taste shape
-- Is it biased toward high energy or one genre by default
-- How could this be unfair if used in a real product
-
----
-
-## 7. Evaluation
-
-How did you check your system
-
-Examples:
-- You tried multiple user profiles and wrote down whether the results matched your expectations
-- You compared your simulation to what a real app like Spotify or YouTube tends to recommend
-- You wrote tests for your scoring logic
-
-You do not need a numeric metric, but if you used one, explain what it measures.
-
----
-
-## 8. Future Work
-
-If you had more time, how would you improve this recommender
-
-Examples:
-
-- Add support for multiple users and "group vibe" recommendations
-- Balance diversity of songs instead of always picking the closest match
-- Use more features, like tempo ranges or lyric themes
-
----
-
-## 9. Personal Reflection
-
-A few sentences about what you learned:
-
-- What surprised you about how your system behaved
-- How did building this change how you think about real music recommenders
-- Where do you think human judgment still matters, even if the model seems "smart"
-
+The RAG layer added the most value where the original system was weakest — natural language input — without touching the part that was already working well. That felt like the right kind of AI use: applying a language model to the human-language problem, and keeping deterministic code for the math. The hardest part was not the code; it was understanding why Gemini needed catalog context in the prompt at all. Without it, the model would map "chill vibes" to genres like "indie" or "alternative" that don't exist in the catalog, and the scoring engine would silently return poor results with no warning. Grounding the model in real data is what makes retrieval-augmented generation actually useful. I also learned that using a companies own AI Agent helped greatly. For instance, I originally used Claude Code to help setup the Gemini API, but consistently kept getting errors. Once I switched to Gemini Agent, it was able to resolve the problem right away, as well as made the implementation more token-efficient. 
